@@ -376,7 +376,7 @@ class JITFunction(KernelInterface[T]):
             lock = FileLock(Path.home() / ".triton" / f"{kernel_name}.compile.lock", timeout=10)
             with lock:
                 if self.debug:
-                    print(f"[Triton] Loading kernel {kernel_name} on device {device}...")
+                    print(f"[Triton (LK)] Loading kernel {kernel_name} on device {device}...")
                 configs = (self._get_config(*[arg.value for arg in args]), )
                 constants = {
                     arg.param.num: arg.value

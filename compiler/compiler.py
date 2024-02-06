@@ -207,7 +207,7 @@ def compile(src, target=None, options=None, kernel_name=None, device=None):
         metadata = json.loads(Path(metadata_path).read_text())
         return CompiledKernel(src, metadata_group)
     if os.environ.get("TRITON_DEBUG", "0") == "1":
-        print(f"[Triton] Compiling kernel {kernel_name} on device {device}...")
+        print(f"[Triton (CK)] Compiling kernel {kernel_name} on device {device}...")
     # initialize metadata
     metadata = {
         "target": target,

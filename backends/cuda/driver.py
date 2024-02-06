@@ -17,13 +17,24 @@ def compile_module_from_src(src, name):
     cache = get_cache_manager(key)
     cache_path = cache.get_file(f"{name}.so")
     if cache_path is None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_path = os.path.join(tmpdir, "main.c")
-            with open(src_path, "w") as f:
-                f.write(src)
-            so = _build(name, src_path, tmpdir, library_dir, include_dir, libraries)
-            with open(so, "rb") as f:
-                cache_path = cache.put(f.read(), f"{name}.so", binary=True)
+        # NOTE(intlsy) The following filelock is added to avoid data race during
+        # module compilation
+        from filelock import FileLock
+        from pathlib import Path
+        lock = FileLock(Path.home() / ".triton" / f"module.compile.lock", timeout=10)
+        with lock:
+            # Check again to avoid duplicate compilation
+            cache_path = cache.get_file(f"{name}.so")
+            if cache_path is None:
+                if os.environ.get("TRITON_DEBUG", "0") == "1":
+                    print(f"[Triton (CM)] Compiling model {name}...")
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    src_path = os.path.join(tmpdir, "main.c")
+                    with open(src_path, "w") as f:
+                        f.write(src)
+                    so = _build(name, src_path, tmpdir, library_dir, include_dir, libraries)
+                    with open(so, "rb") as f:
+                        cache_path = cache.put(f.read(), f"{name}.so", binary=True)
     import importlib.util
     spec = importlib.util.spec_from_file_location(name, cache_path)
     mod = importlib.util.module_from_spec(spec)
