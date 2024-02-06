@@ -369,34 +369,44 @@ class JITFunction(KernelInterface[T]):
         key = (sig_key, constexpr_key, spec_key, options)
         # Kernel is not cached; we have to compile.
         if key not in self.cache[device]:
-            configs = (self._get_config(*[arg.value for arg in args]), )
-            constants = {
-                arg.param.num: arg.value
-                for arg in args
-                if arg.param.is_constexpr or arg.param.num in configs[0].equal_to_1 or arg.value is None
-            }
-            for i, arg in constants.items():
-                if callable(arg):
-                    raise TypeError(f"Callable constexpr at index {i} is not supported")
+            # NOTE(intlsy) Here we acquire a file lock to prevent data race when loading/compiling kernel
+            from filelock import FileLock
+            from pathlib import Path
+            kernel_name = self.fn.__name__
+            lock = FileLock(Path.home() / ".triton" / f"{kernel_name}.compile.lock", timeout=10)
+            with lock:
+                if self.debug:
+                    print(f"[Triton] Loading kernel {kernel_name} on device {device}...")
+                configs = (self._get_config(*[arg.value for arg in args]), )
+                constants = {
+                    arg.param.num: arg.value
+                    for arg in args
+                    if arg.param.is_constexpr or arg.param.num in configs[0].equal_to_1 or arg.value is None
+                }
+                for i, arg in constants.items():
+                    if callable(arg):
+                        raise TypeError(f"Callable constexpr at index {i} is not supported")
 
-            # Build kernel signature -- doesn't include constexpr arguments.
-            signature = {
-                arg.param.num: self._type_of(self._key_of(arg.value))
-                for arg in args
-                if not arg.param.is_constexpr
-            }
+                # Build kernel signature -- doesn't include constexpr arguments.
+                signature = {
+                    arg.param.num: self._type_of(self._key_of(arg.value))
+                    for arg in args
+                    if not arg.param.is_constexpr
+                }
 
-            if self._call_hook(key, signature, device, constants, options.num_warps, options.num_ctas,
-                               options.num_stages, options.enable_warp_specialization, options.enable_fp_fusion,
-                               options.extern_libs, configs):
-                return None
-            # compile the kernel
-            src = ASTSource(self, signature, constants, configs[0])
-            self.cache[device][key] = compile(
-                src,
-                target=target,
-                options=options.__dict__,
-            )
+                if self._call_hook(key, signature, device, constants, options.num_warps, options.num_ctas,
+                                options.num_stages, options.enable_warp_specialization, options.enable_fp_fusion,
+                                options.extern_libs, configs):
+                    return None
+                # compile the kernel
+                src = ASTSource(self, signature, constants, configs[0])
+                self.cache[device][key] = compile(
+                    src,
+                    target=target,
+                    options=options.__dict__,
+                    kernel_name=kernel_name,
+                    device=device,
+                )
 
         kernel = self.cache[device][key]
         if not warmup:

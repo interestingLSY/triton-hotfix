@@ -185,7 +185,7 @@ def triton_key():
     return f'{__version__}' + '-'.join(contents)
 
 
-def compile(src, target=None, options=None):
+def compile(src, target=None, options=None, kernel_name=None, device=None):
     if target is None:
         target = driver.get_current_target()
     backend = make_backend(target)
@@ -206,6 +206,8 @@ def compile(src, target=None, options=None):
         # cache hit!
         metadata = json.loads(Path(metadata_path).read_text())
         return CompiledKernel(src, metadata_group)
+    if os.environ.get("TRITON_DEBUG", "0") == "1":
+        print(f"[Triton] Compiling kernel {kernel_name} on device {device}...")
     # initialize metadata
     metadata = {
         "target": target,
