@@ -2,3 +2,4 @@ __pycache__
 _C
 *.pyc
 third_party
+backends/cuda/bin
